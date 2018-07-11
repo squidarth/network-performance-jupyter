@@ -28,14 +28,11 @@ class Receiver(object):
         """Construct a serialized ACK that acks a serialized datagram."""
 
         data = json.loads(serialized_data)
-        print(serialized_data)
 
         return json.dumps({
           'seq_num': data['seq_num'],
           'send_ts': data['send_ts'],
           'sent_bytes': data['sent_bytes'],
-          'delivered_time': data['delivered_time'],
-          'delivered': data['delivered'],
           'ack_bytes': len(serialized_data)
         })
 
@@ -43,7 +40,7 @@ class Receiver(object):
     def handshake(self):
         """Handshake with peer sender. Must be called before run()."""
 
-        #self.sock.setblocking(0)  # non-blocking UDP socket
+        self.sock.setblocking(0)  # non-blocking UDP socket
 
         TIMEOUT = 1000  # ms
 
@@ -51,9 +48,8 @@ class Receiver(object):
         self.poller.modify(self.sock, READ_ERR_FLAGS)
 
         while True:
-            self.sock.sendto('Hello from receiver', self.peer_addr)
+            self.sock.sendto(json.dumps({'handshake': True}).encode(), self.peer_addr)
             events = self.poller.poll(TIMEOUT)
-            print(events)
 
             if not events:  # timed out
                 retry_times += 1
@@ -74,13 +70,10 @@ class Receiver(object):
 
                 if flag & READ_FLAGS:
                     msg, addr = self.sock.recvfrom(1600)
-                    print(type(addr[0]))
                     parsed_addr = (addr[0].decode(), addr[1])
-                    print(msg)
-                    print(addr)
 
                     if addr == self.peer_addr:
-                        if msg.decode() != 'Hello from sender':
+                        if not json.loads(msg.decode()).get('handshake'):
                             # 'Hello from sender' was presumably lost
                             # received subsequent data from peer sender
                             ack = self.construct_ack_from_data(msg)
