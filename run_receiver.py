@@ -6,14 +6,14 @@ from receiver import Receiver
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('ip', metavar='IP')
-    parser.add_argument('port', type=int)
+    parser.add_argument('ip_port_pairs', nargs='*')
     args = parser.parse_args()
+    peers = args.ip_port_pairs
 
-    receiver = Receiver(args.ip, args.port)
+    receiver = Receiver([(peers[i], int(peers[i+1])) for i in range(0, len(peers), 2)])
 
     try:
-        receiver.handshake()
+        receiver.perform_handshakes()
         receiver.run()
     except KeyboardInterrupt:
         pass

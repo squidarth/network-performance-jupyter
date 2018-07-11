@@ -11,8 +11,8 @@ ALL_FLAGS = READ_FLAGS | WRITE_FLAGS | ERR_FLAGS
 
 
 class Receiver(object):
-    def __init__(self, ip, port):
-        self.peer_addr = (ip, port)
+    def __init__(self, peers):
+        self.peers = peers
 
         # UDP socket and poller
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -37,7 +37,7 @@ class Receiver(object):
         })
 
 
-    def handshake(self):
+    def perform_handshakes(self):
         """Handshake with peer sender. Must be called before run()."""
 
         self.sock.setblocking(0)  # non-blocking UDP socket
@@ -46,9 +46,13 @@ class Receiver(object):
 
         retry_times = 0
         self.poller.modify(self.sock, READ_ERR_FLAGS)
+        # Copy self.peers
+        unconnected_peers = self.peers[:]
 
-        while True:
-            self.sock.sendto(json.dumps({'handshake': True}).encode(), self.peer_addr)
+        while len(unconnected_peers) > 0:
+            for peer in unconnected_peers:
+                self.sock.sendto(json.dumps({'handshake': True}).encode(), peer)
+
             events = self.poller.poll(TIMEOUT)
 
             if not events:  # timed out
@@ -72,22 +76,18 @@ class Receiver(object):
                     msg, addr = self.sock.recvfrom(1600)
                     parsed_addr = (addr[0].decode(), addr[1])
 
-                    if addr == self.peer_addr:
-                        if not json.loads(msg.decode()).get('handshake'):
-                            # 'Hello from sender' was presumably lost
-                            # received subsequent data from peer sender
-                            ack = self.construct_ack_from_data(msg)
-                            if ack is not None:
-                                self.sock.sendto(ack, self.peer_addr)
-                        return
+                    if parsed_addr in unconnected_peers:
+                        if json.loads(msg.decode()).get('handshake'):
+                            unconnected_peers.remove(parsed_addr)
 
     def run(self):
         self.sock.setblocking(1)  # blocking UDP socket
 
         while True:
             serialized_data, addr = self.sock.recvfrom(1600)
+            print(serialized_data)
 
-            if addr == self.peer_addr:
+            if addr in self.peers:
                 ack = self.construct_ack_from_data(serialized_data)
                 if ack is not None:
-                    self.sock.sendto(ack, self.peer_addr)
+                    self.sock.sendto(ack, addr)
