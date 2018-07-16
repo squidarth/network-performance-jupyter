@@ -17,6 +17,7 @@ class Peer(object):
         self.seq_num = -1
         self.attempts = 0
         self.previous_ack = None
+        self.high_water_mark = -1
         self.window = []
 
     def window_has_no_missing_segments(self):
@@ -26,6 +27,7 @@ class Peer(object):
     def process_window(self):
         seq_nums = [seg['seq_num'] for seg in self.window]
         if self.window_has_no_missing_segments():
+            self.high_water_mark = max(self.high_water_mark, self.window[-1]['seq_num'])
             self.window = self.window[-1:]
         elif len(self.window) == self.window_size:
             self.window = self.window[:-1]
@@ -37,6 +39,7 @@ class Peer(object):
         if all([seq_num != item['seq_num'] for item in self.window]):
             self.window.append(ack)
         self.window.sort(key=lambda a: a['seq_num'])
+
         self.process_window()
 
     def next_ack(self):
@@ -168,9 +171,9 @@ class Receiver(object):
 
                 data = json.loads(serialized_data)
                 seq_num = data['seq_num']
+                if seq_num > peer.high_water_mark:
+                    ack = self.construct_ack(serialized_data)
+                    peer.add_segment(ack)
 
-                ack = self.construct_ack(serialized_data)
-                peer.add_segment(ack)
-
-                if ack is not None:
-                    self.sock.sendto(json.dumps(peer.next_ack()).encode(), addr)
+                    if peer.next_ack() is not None:
+                        self.sock.sendto(json.dumps(peer.next_ack()).encode(), addr)
