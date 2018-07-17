@@ -34,7 +34,7 @@ class Sender(object):
 
     def recv(self):
         serialized_ack, addr = self.sock.recvfrom(1600)
-        self.strategy.process_ack(serialized_ack)
+        self.strategy.process_ack(serialized_ack.decode())
 
 
     def handshake(self):

@@ -16,6 +16,8 @@ class SenderStrategy(object):
         self.cwnds = []
         self.unacknowledged_packets = {}
         self.times_of_acknowledgements = []
+        self.ack_count = 0
+        self.slow_start_thresholds = []
 
     def next_packet_to_send(self):
         raise NotImplementedError
@@ -102,7 +104,7 @@ class TahoeStrategy(SenderStrategy):
             if self.curr_duplicate_acks == 3:
                 # Received 3 duplicate acks, retransmit
                 self.fast_retransmit_packet = self.unacknowledged_packets[ack['seq_num'] + 1]
-                self.slow_start_thresh = min(1, self.cwnd/2)
+                self.slow_start_thresh = max(1, self.cwnd/2)
                 self.cwnd = 1
         elif ack['seq_num'] >= self.next_ack:
             if self.fast_retransmit_packet:
@@ -180,14 +182,5 @@ class FixedWindowStrategy(SenderStrategy):
             self.sent_bytes += ack['ack_bytes']
             rtt = float(time.time() - ack['send_ts'])
             self.rtts.append(rtt)
+            self.ack_count += 1
         self.cwnds.append(self.cwnd)
-
-
-class CubicStrategy(SenderStrategy):
-    def next_packet_to_send(self):
-        raise NotImplementedError
-
-    def process_ack(self, ack: str):
-        raise NotImplementedError
-
-
