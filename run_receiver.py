@@ -4,7 +4,7 @@ import argparse
 from src.receiver import Receiver
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument('ip_port_pairs', nargs='*')
     args = parser.parse_args()

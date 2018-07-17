@@ -12,13 +12,13 @@ def generate_mahimahi_command(mahimahi_settings: Dict):
         loss_directive = "mm-loss downlink %f" % mahimahi_settings.get('loss')
     else:
         loss_directive = ""
-    return "mm-delay {delay} {loss_directive} mm-link traces/{trace_file} traces/{trace_file} --downlink-queue=droptail --downlink-queue-args=packets={queue_size}".format(
+    return "mm-delay {delay} {loss_directive} mm-link traces/{trace_file} traces/{trace_file} --downlink-queue=droptail --downlink-queue-args=bytes={queue_size}".format(
       delay=mahimahi_settings['delay'],
       queue_size=mahimahi_settings['queue_size'],
       loss_directive=loss_directive,
       trace_file=mahimahi_settings['trace_file']
     )
-        
+
 def get_open_udp_port():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -53,10 +53,11 @@ def print_performance(sender: Sender, num_seconds: int):
     plt.show()
     print("")
     
-    plt.plot(sender.strategy.slow_start_thresholds)
-    plt.xlabel("Time")
-    plt.ylabel("Slow start threshold")
-    plt.show()
+    if len(sender.strategy.slow_start_thresholds) > 0:
+        plt.plot(sender.strategy.slow_start_thresholds)
+        plt.xlabel("Time")
+        plt.ylabel("Slow start threshold")
+        plt.show()
     print("")
     
 def run_with_mahi_settings(mahimahi_settings: Dict, seconds_to_run: int, senders: List):

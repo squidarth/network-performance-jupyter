@@ -27,10 +27,10 @@ class TestTahoeStrategy(unittest.TestCase):
 
         self.assertEqual(json.loads(second_segment)['seq_num'], 1)
         third_segment = strategy.next_packet_to_send()
-        
+
         self.assertEqual(json.loads(third_segment)['seq_num'], 2)
         self.assertIsNone(strategy.next_packet_to_send())
-        
+
         ack_2 = {
           'seq_num': 1,
           'send_ts': time.time(),
@@ -171,10 +171,10 @@ class TestRenoSender(unittest.TestCase):
 
         self.assertEqual(json.loads(second_segment)['seq_num'], 1)
         third_segment = strategy.next_packet_to_send()
-        
+
         self.assertEqual(json.loads(third_segment)['seq_num'], 2)
         self.assertIsNone(strategy.next_packet_to_send())
-        
+
         ack_2 = {
           'seq_num': 1,
           'send_ts': time.time(),

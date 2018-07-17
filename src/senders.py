@@ -29,7 +29,7 @@ class Sender(object):
     def send(self) -> None:
         next_segment =  self.strategy.next_packet_to_send()
         if next_segment is not None:
-            self.sock.sendto(next_segment.encode(), self.peer_addr)
+            self.sock.sendto(next_segment.encode(), self.peer_addr) # type: ignore
         time.sleep(0)
 
     def recv(self):
