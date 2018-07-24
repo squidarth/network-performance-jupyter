@@ -2,8 +2,6 @@ import json
 import time
 from typing import List, Dict, Tuple, Optional
 
-TIMEOUT = 200
-
 class SenderStrategy(object):
     def __init__(self) -> None:
         self.seq_num = 0
@@ -77,6 +75,8 @@ class FixedWindowStrategy(SenderStrategy):
         self.cwnds.append(self.cwnd)
 
 
+TIMEOUT = 2
+
 class TahoeStrategy(SenderStrategy):
     def __init__(self, slow_start_thresh: int, initial_cwnd: int) -> None:
         self.slow_start_thresh = slow_start_thresh
@@ -106,6 +106,7 @@ class TahoeStrategy(SenderStrategy):
         in_greater_than_one_retransmit = False
         if self.retransmitting_packet and self.time_of_retransmit and time.time() - self.time_of_retransmit > 1:
             # The retransmit packet timed out--resend it
+            print("Retransmitting > 1 time")
             self.retransmitting_packet = False
             in_greater_than_one_retransmit = True
 
@@ -116,6 +117,9 @@ class TahoeStrategy(SenderStrategy):
             send_data['is_retransmit'] = True
             serialized_data = json.dumps(send_data)
             self.retransmitting_packet = True
+            if in_greater_than_one_retransmit:
+                print("Retransmitting > 1 time")
+            print("retransmitting %d" % (self.fast_retransmit_packet['seq_num']))
             self.time_of_retransmit = time.time()
 
         elif self.window_is_open():
@@ -133,11 +137,15 @@ class TahoeStrategy(SenderStrategy):
             # isn't how TCP actually works--traditional TCP uses exponential
             # backoff for computing the timeouts
             for seq_num, segment in self.unacknowledged_packets.items():
-                if time.time() - segment['send_ts'] > TIMEOUT:
-                    self.unacknowledged_packets[seq_num]['send_ts'] = time.time()
+                if seq_num < self.seq_num and time.time() - segment['send_ts'] > TIMEOUT:
+                    print("Timedout packet id: %d" % seq_num)
+                    segment['send_ts'] = time.time()
                     segment['is_retransmit'] = True
                     self.slow_start_thresh = int(max(1, self.cwnd/2))
                     self.cwnd = 1
+
+                    self.fast_retransmitted_packets_in_flight.append(seq_num)
+                    self.fast_retransmit_packet = segment
 
                     return json.dumps(segment)
 
@@ -169,7 +177,9 @@ class TahoeStrategy(SenderStrategy):
             if self.curr_duplicate_acks == 3 and (ack['seq_num'] + 1) not in self.fast_retransmitted_packets_in_flight:
                 # Received 3 duplicate acks, retransmit
                 self.fast_retransmitted_packets_in_flight.append(ack['seq_num'] + 1)
+                print(self.fast_retransmitted_packets_in_flight)
                 self.fast_retransmit_packet = self.unacknowledged_packets[ack['seq_num'] + 1]
+                print("Lost packet id: %d" % (ack['seq_num'] + 1))
                 self.slow_start_thresh = int(max(1, self.cwnd/2))
                 self.cwnd = 1
         elif ack['seq_num'] >= self.next_ack:
@@ -179,16 +189,18 @@ class TahoeStrategy(SenderStrategy):
                 self.curr_duplicate_acks = 0
                 self.seq_num = ack['seq_num'] + 1
 
+                print("Recovering from fast retrasmit w/ seq_num %d" % ack['seq_num'])
                 self.fast_retransmitted_packets_in_flight = []
-
-            # Acknowledge all packets where seq_num < ack['seq_num']
-            self.unacknowledged_packets = {
-                k:v
-                for k,v in
-                self.unacknowledged_packets.items()
-                if k > ack['seq_num']
-            }
+            else:
+                # Acknowledge all packets where seq_num < ack['seq_num']
+                self.unacknowledged_packets = {
+                    k:v
+                    for k,v in
+                    self.unacknowledged_packets.items()
+                    if k > ack['seq_num']
+                }
             self.next_ack = max(self.next_ack, ack['seq_num'] + 1)
+            self.seq_num = self.next_ack
             self.ack_count += 1
             self.sent_bytes = ack['ack_bytes']
             rtt = float(time.time() - ack['send_ts'])

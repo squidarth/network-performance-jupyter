@@ -77,7 +77,7 @@ class Receiver(object):
 
         self.poller = select.poll()
         self.poller.register(self.sock, ALL_FLAGS)
-        self.running_time = 30
+        self.running_time = 120
 
     def cleanup(self):
         self.sock.close()
@@ -156,5 +156,4 @@ class Receiver(object):
                         peer.add_segment(ack)
 
                         if peer.next_ack() is not None:
-
                             self.sock.sendto(json.dumps(peer.next_ack()).encode(), addr)
