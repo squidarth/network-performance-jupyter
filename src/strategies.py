@@ -2,6 +2,7 @@ import json
 import time
 from typing import List, Dict, Tuple, Optional
 
+TIMEOUT = 200
 
 class SenderStrategy(object):
     def __init__(self) -> None:
@@ -86,6 +87,8 @@ class TahoeStrategy(SenderStrategy):
         self.retransmitting_packet = False
         self.ack_count = 0
 
+        self.fast_retransmitted_packets_in_flight = []
+
         self.duplicated_ack = None
         self.slow_start_thresholds = []
 
@@ -100,34 +103,42 @@ class TahoeStrategy(SenderStrategy):
 
     def next_packet_to_send(self) -> Optional[str]:
         send_data = None
+        in_greater_than_one_retransmit = False
         if self.retransmitting_packet and self.time_of_retransmit and time.time() - self.time_of_retransmit > 1:
             # The retransmit packet timed out--resend it
             self.retransmitting_packet = False
+            in_greater_than_one_retransmit = True
 
         if self.fast_retransmit_packet and not self.retransmitting_packet:
             # Logic for resending the packet
             self.unacknowledged_packets[self.fast_retransmit_packet['seq_num']]['send_ts'] = time.time()
             send_data = self.fast_retransmit_packet
+            send_data['is_retransmit'] = True
             serialized_data = json.dumps(send_data)
             self.retransmitting_packet = True
-
             self.time_of_retransmit = time.time()
 
         elif self.window_is_open():
             send_data = {
                 'seq_num': self.seq_num,
-                'send_ts': time.time()
+                'send_ts': time.time(),
+                'cwnd': self.cwnd,
+                'is_retransmit': False
             }
 
             self.unacknowledged_packets[self.seq_num] = send_data
             self.seq_num += 1
-        else:
+        elif not self.fast_retransmit_packet:
             # Check to see if any segments have timed out. Note that this
             # isn't how TCP actually works--traditional TCP uses exponential
             # backoff for computing the timeouts
             for seq_num, segment in self.unacknowledged_packets.items():
-                if time.time() - segment['send_ts'] > 4:
+                if time.time() - segment['send_ts'] > TIMEOUT:
                     self.unacknowledged_packets[seq_num]['send_ts'] = time.time()
+                    segment['is_retransmit'] = True
+                    self.slow_start_thresh = int(max(1, self.cwnd/2))
+                    self.cwnd = 1
+
                     return json.dumps(segment)
 
         if send_data is None:
@@ -155,17 +166,20 @@ class TahoeStrategy(SenderStrategy):
                 self.duplicated_ack = ack
                 self.curr_duplicate_acks = 1
 
-            if self.curr_duplicate_acks == 3:
+            if self.curr_duplicate_acks == 3 and (ack['seq_num'] + 1) not in self.fast_retransmitted_packets_in_flight:
                 # Received 3 duplicate acks, retransmit
+                self.fast_retransmitted_packets_in_flight.append(ack['seq_num'] + 1)
                 self.fast_retransmit_packet = self.unacknowledged_packets[ack['seq_num'] + 1]
                 self.slow_start_thresh = int(max(1, self.cwnd/2))
                 self.cwnd = 1
         elif ack['seq_num'] >= self.next_ack:
-            if self.fast_retransmit_packet:
+            if self.fast_retransmit_packet is not None:
                 self.fast_retransmit_packet = None
                 self.retransmitting_packet = False
                 self.curr_duplicate_acks = 0
                 self.seq_num = ack['seq_num'] + 1
+
+                self.fast_retransmitted_packets_in_flight = []
 
             # Acknowledge all packets where seq_num < ack['seq_num']
             self.unacknowledged_packets = {
@@ -176,7 +190,7 @@ class TahoeStrategy(SenderStrategy):
             }
             self.next_ack = max(self.next_ack, ack['seq_num'] + 1)
             self.ack_count += 1
-            self.sent_bytes += ack['ack_bytes']
+            self.sent_bytes = ack['ack_bytes']
             rtt = float(time.time() - ack['send_ts'])
             self.rtts.append(rtt)
             if self.cwnd < self.slow_start_thresh:
