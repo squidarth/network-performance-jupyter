@@ -176,6 +176,7 @@ class TahoeStrategy(SenderStrategy):
             }
             self.next_ack = max(self.next_ack, ack['seq_num'] + 1)
             self.ack_count += 1
+            self.sent_bytes += ack['ack_bytes']
             rtt = float(time.time() - ack['send_ts'])
             self.rtts.append(rtt)
             if self.cwnd < self.slow_start_thresh:

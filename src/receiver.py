@@ -2,6 +2,8 @@ import sys
 import json
 import socket
 import select
+from subprocess import Popen
+import time
 from typing import List, Dict, Tuple
 
 READ_FLAGS = select.POLLIN | select.POLLPRI
@@ -28,10 +30,23 @@ class Peer(object):
         seq_nums = [seg['seq_num'] for seg in self.window]
         return all([seq_nums[i] + 1 ==  seq_nums[i+1] for i in range(len(seq_nums[:-1]))])
 
+
+    def update_high_water_mark(self):
+        highest_contiguous_index = 0
+
+        seq_nums = [seg['seq_num'] for seg in self.window]
+        for i in range(len(seq_nums[:-1])):
+            if seq_nums[i] + 1 == seq_nums[i+1]:
+                highest_contiguous_index = i+1
+            else:
+                break
+        self.high_water_mark = max(self.high_water_mark, seq_nums[highest_contiguous_index])
+
     def process_window(self):
         seq_nums = [seg['seq_num'] for seg in self.window]
+
+        self.update_high_water_mark()
         if self.window_has_no_missing_segments():
-            self.high_water_mark = max(self.high_water_mark, self.window[-1]['seq_num'])
             self.window = self.window[-1:]
         elif len(self.window) == self.window_size:
             self.window = self.window[:-1]
@@ -47,11 +62,7 @@ class Peer(object):
         self.process_window()
 
     def next_ack(self):
-        for i in range(len(self.window[:-1])):
-            if self.window[i + 1]['seq_num'] > self.window[i]['seq_num'] + 1:
-                return self.window[i]
-        else:
-            return self.window[-1]
+        return next(iter([item for item in self.window if item['seq_num'] == self.high_water_mark]), None)
 
 class Receiver(object):
     def __init__(self, peers: List[Tuple[str, int]], window_size: int = RECEIVE_WINDOW) -> None:
@@ -66,6 +77,7 @@ class Receiver(object):
 
         self.poller = select.poll()
         self.poller.register(self.sock, ALL_FLAGS)
+        self.running_time = 30
 
     def cleanup(self):
         self.sock.close()
@@ -124,17 +136,25 @@ class Receiver(object):
     def run(self):
         self.sock.setblocking(1)  # blocking UDP socket
 
+        start_time = time.time()
         while True:
-            serialized_data, addr = self.sock.recvfrom(1600)
+            if start_time + self.running_time < time.time():
+                Popen("netstat -suna", shell=True)
+                Popen("ifconfig", shell=True)
+                sys.exit(1)
+            else:
+                serialized_data, addr = self.sock.recvfrom(1600)
 
-            if addr in self.peers:
-                peer = self.peers[addr]
+                if addr in self.peers:
+                    peer = self.peers[addr]
 
-                data = json.loads(serialized_data)
-                seq_num = data['seq_num']
-                if seq_num > peer.high_water_mark:
-                    ack = self.construct_ack(serialized_data)
-                    peer.add_segment(ack)
+                    data = json.loads(serialized_data)
+                    seq_num = data['seq_num']
+                    if seq_num > peer.high_water_mark:
 
-                    if peer.next_ack() is not None:
-                        self.sock.sendto(json.dumps(peer.next_ack()).encode(), addr)
+                        ack = self.construct_ack(serialized_data)
+                        peer.add_segment(ack)
+
+                        if peer.next_ack() is not None:
+
+                            self.sock.sendto(json.dumps(peer.next_ack()).encode(), addr)
