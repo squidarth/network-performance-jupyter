@@ -142,14 +142,13 @@ class Receiver(object):
                 sys.exit(1)
             else:
                 serialized_data, addr = self.sock.recvfrom(1600)
-                #print("recv'd data")
 
                 if addr in self.peers:
                     peer = self.peers[addr]
 
                     data = json.loads(serialized_data)
                     seq_num = data['seq_num']
-                    print("high water mark %d for %d" % (peer.high_water_mark, seq_num))
+                    #print("high water mark %d for %d" % (peer.high_water_mark, seq_num))
                     if seq_num > peer.high_water_mark:
 
                         ack = self.construct_ack(serialized_data)
