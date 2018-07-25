@@ -65,7 +65,7 @@ class Peer(object):
         return next(iter([item for item in self.window if item['seq_num'] == self.high_water_mark]), None)
 
 class Receiver(object):
-    def __init__(self, peers: List[Tuple[str, int]], window_size: int = RECEIVE_WINDOW) -> None:
+    def __init__(self, running_time: int, peers: List[Tuple[str, int]], window_size: int = RECEIVE_WINDOW) -> None:
         self.recv_window_size = window_size
         self.peers: Dict[Tuple, Peer] = {}
         for peer in peers:
@@ -77,7 +77,7 @@ class Receiver(object):
 
         self.poller = select.poll()
         self.poller.register(self.sock, ALL_FLAGS)
-        self.running_time = 120
+        self.running_time = running_time
 
     def cleanup(self):
         self.sock.close()
@@ -139,17 +139,17 @@ class Receiver(object):
         start_time = time.time()
         while True:
             if start_time + self.running_time < time.time():
-                Popen("netstat -suna", shell=True)
-                Popen("ifconfig", shell=True)
                 sys.exit(1)
             else:
                 serialized_data, addr = self.sock.recvfrom(1600)
+                #print("recv'd data")
 
                 if addr in self.peers:
                     peer = self.peers[addr]
 
                     data = json.loads(serialized_data)
                     seq_num = data['seq_num']
+                    print("high water mark %d for %d" % (peer.high_water_mark, seq_num))
                     if seq_num > peer.high_water_mark:
 
                         ack = self.construct_ack(serialized_data)

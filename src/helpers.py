@@ -57,6 +57,7 @@ def print_performance(sender: Sender, num_seconds: int):
     plt.xlabel("Time")
     plt.ylabel("Link Queue Size")
     plt.show()
+    print(" ")
 
     timestamps = [ ack[0] for ack in sender.strategy.times_of_acknowledgements]
     seq_nums = [ ack[1] for ack in sender.strategy.times_of_acknowledgements]
@@ -73,6 +74,12 @@ def print_performance(sender: Sender, num_seconds: int):
     plt.show()
     print("")
 
+    plt.plot(sender.strategy.rtts)
+    plt.xlabel("Time")
+    plt.ylabel("Current RTT")
+    plt.show()
+    print("")
+
     if len(sender.strategy.slow_start_thresholds) > 0:
         plt.plot(sender.strategy.slow_start_thresholds)
         plt.xlabel("Time")
@@ -85,7 +92,7 @@ def run_with_mahi_settings(mahimahi_settings: Dict, seconds_to_run: int, senders
 
     sender_ports = " ".join(["$MAHIMAHI_BASE %s" % sender.port for sender in senders])
 
-    cmd = "%s -- sh -c 'python3 %s %s' > out.out" % (mahimahi_cmd, RECEIVER_FILE, sender_ports)
+    cmd = "%s -- sh -c 'python3 %s %d %s' > out.out" % (mahimahi_cmd, RECEIVER_FILE, seconds_to_run, sender_ports)
     receiver_process = Popen(cmd, shell=True)
     for sender in senders:
         sender.handshake()
