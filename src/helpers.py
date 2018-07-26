@@ -20,11 +20,32 @@ def generate_mahimahi_command(mahimahi_settings: Dict) -> str:
         loss_directive = "mm-loss downlink %f" % mahimahi_settings.get('loss')
     else:
         loss_directive = ""
-    return "mm-delay {delay} {loss_directive} mm-link traces/{trace_file} traces/{trace_file} --downlink-queue=droptail --downlink-queue-args=bytes={queue_size} --downlink-queue-log={queue_log_file} --uplink-queue-log=uplink_queue.log".format(
+
+    queue_type =  mahimahi_settings.get('queue_type', 'droptail')
+
+    if mahimahi_settings.get('downlink_queue_options'):
+        downlink_queue_options = "--downlink-queue-args=" + ",".join(
+             ["%s=%s" % (key, value)
+             for key, value in mahimahi_settings.get('downlink_queue_options').items()]
+        )
+    else:
+        downlink_queue_options = ""
+
+    if mahimahi_settings.get('uplink_queue_options'):
+        uplink_queue_options = " ".join(
+            ["--downlink-queue-args=%s=%s" % (key, value)
+             for key, value in mahimahi_settings.get('uplink_queue_options').items()]
+        )
+    else:
+        uplink_queue_options = ""
+
+    return "mm-delay {delay} {loss_directive} mm-link traces/{trace_file} traces/{trace_file} --downlink-queue={queue_type} {downlink_queue_options} {uplink_queue_options} --downlink-queue-log={queue_log_file}".format(
       delay=mahimahi_settings['delay'],
-      queue_size=mahimahi_settings['queue_size'],
+      downlink_queue_options=downlink_queue_options,
+      uplink_queue_options=uplink_queue_options,
       loss_directive=loss_directive,
       trace_file=mahimahi_settings['trace_file'],
+      queue_type=queue_type,
       queue_log_file=QUEUE_LOG_FILE
     )
 
@@ -103,7 +124,7 @@ def run_with_mahi_settings(mahimahi_settings: Dict, seconds_to_run: int, senders
         thread.join()
 
     os.rename(QUEUE_LOG_FILE, QUEUE_LOG_TMP_FILE)
-    os.rename(DROP_LOG, DROP_LOG_TMP_FILE)
+    #os.rename(DROP_LOG, DROP_LOG_TMP_FILE)
 
     for sender in senders:
         print_performance(sender, seconds_to_run)
