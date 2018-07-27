@@ -58,15 +58,14 @@ def get_open_udp_port():
     s.close()
     return port
 
+SENDER_COLORS = ["blue", "red", "green", "cyan", "magenta", "yellow", "black"]
 
-def print_performance(sender: Sender, num_seconds: int):
-    print("Results for sender %d:" % sender.port)
-    print("Total Acks: %d" % sender.strategy.total_acks)
-    print("Num Duplicate Acks: %d" % sender.strategy.num_duplicate_acks)
-
-    print("%% duplicate acks: %f" % ((float(sender.strategy.num_duplicate_acks * 100))/sender.strategy.total_acks))
-    print("Throughput (bytes/s): %f" % (AVERAGE_SEGMENT_SIZE * (sender.strategy.ack_count/num_seconds)))
-    print("Average RTT (ms): %f" % ((float(sum(sender.strategy.rtts))/len(sender.strategy.rtts)) * 1000))
+def print_performance(senders: List[Sender], num_seconds: int):
+    for sender in senders:
+        print("Results for sender %d, with strategy: %s" % (sender.port, sender.strategy.__class__.__name__))
+        print("**Throughput:**                           %f bytes/s" % (AVERAGE_SEGMENT_SIZE * (sender.strategy.ack_count/num_seconds)))
+        print("**Average RTT:**                          %f ms" % ((float(sum(sender.strategy.rtts))/len(sender.strategy.rtts)) * 1000))
+        print("")
 
 
     # Compute the queue log stuff
@@ -78,35 +77,34 @@ def print_performance(sender: Sender, num_seconds: int):
     plt.xlabel("Time")
     plt.ylabel("Link Queue Size")
     plt.show()
-    print(" ")
 
-    timestamps = [ ack[0] for ack in sender.strategy.times_of_acknowledgements]
-    seq_nums = [ ack[1] for ack in sender.strategy.times_of_acknowledgements]
-
-    plt.scatter(timestamps, seq_nums)
-    plt.xlabel("Timestamps")
-    plt.ylabel("Sequence Numbers")
-
-    plt.show()
-
-    plt.plot(sender.strategy.cwnds)
+    handles = []
+    for idx, sender in enumerate(senders):
+        plt.plot(sender.strategy.cwnds, c=SENDER_COLORS[idx], label=sender.strategy.__class__.__name__)
+    plt.legend()
     plt.xlabel("Time")
     plt.ylabel("Congestion Window Size")
     plt.show()
     print("")
 
-    plt.plot(sender.strategy.rtts)
+    for idx, sender in enumerate(senders):
+        plt.plot(sender.strategy.rtts, c=SENDER_COLORS[idx], label=sender.strategy.__class__.__name__)
+    plt.legend()
     plt.xlabel("Time")
     plt.ylabel("Current RTT")
     plt.show()
-    print("")
 
-    if len(sender.strategy.slow_start_thresholds) > 0:
-        plt.plot(sender.strategy.slow_start_thresholds)
+    for idx, sender in enumerate(senders):
+        if len(sender.strategy.slow_start_thresholds) > 0:
+            plt.plot(sender.strategy.slow_start_thresholds, c=SENDER_COLORS[idx], label=sender.strategy.__class__.__name__)
+
+    if any([len(sender.strategy.slow_start_thresholds) > 0 for sender in senders]):
+        plt.legend()
         plt.xlabel("Time")
         plt.ylabel("Slow start threshold")
         plt.show()
-    print("")
+
+        print("")
 
 def run_with_mahi_settings(mahimahi_settings: Dict, seconds_to_run: int, senders: List):
     mahimahi_cmd = generate_mahimahi_command(mahimahi_settings)
@@ -126,6 +124,5 @@ def run_with_mahi_settings(mahimahi_settings: Dict, seconds_to_run: int, senders
     os.rename(QUEUE_LOG_FILE, QUEUE_LOG_TMP_FILE)
     #os.rename(DROP_LOG, DROP_LOG_TMP_FILE)
 
-    for sender in senders:
-        print_performance(sender, seconds_to_run)
+    print_performance(senders, seconds_to_run)
     receiver_process.kill()
