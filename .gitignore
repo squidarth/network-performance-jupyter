@@ -3,3 +3,7 @@ ubuntu-bionic-18.04-cloudimg-console.log
 *.swp
 *.swo
 *.pyc
+.DS_Store
+.ipynb_checkpoints/
+.mypy_cache/
+.pytest_cache/
