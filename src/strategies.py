@@ -377,9 +377,9 @@ class TahoeStrategy(SenderStrategy):
             if self.cwnd < self.slow_start_thresh:
                 # In slow start
                 self.cwnd += 1
-            elif (ack['seq_num'] + 1) % self.cwnd == 0:
+            elif (ack['seq_num'] + 1):
                 # In congestion avoidance
-                self.cwnd += 1
+                self.cwnd += 1.0/self.cwnd
 
         self.cwnds.append((time.time(), self.cwnd))
         self.slow_start_thresholds.append((time.time(), self.slow_start_thresh))
