@@ -80,7 +80,7 @@ def print_performance(senders: List[Sender], num_seconds: int):
 
     handles = []
     for idx, sender in enumerate(senders):
-        plt.plot(sender.strategy.cwnds, c=SENDER_COLORS[idx], label=sender.strategy.__class__.__name__)
+        plt.plot(*zip(*sender.strategy.cwnds), c=SENDER_COLORS[idx], label=sender.strategy.__class__.__name__)
     plt.legend()
     plt.xlabel("Time")
     plt.ylabel("Congestion Window Size")
@@ -88,7 +88,7 @@ def print_performance(senders: List[Sender], num_seconds: int):
     print("")
 
     for idx, sender in enumerate(senders):
-        plt.plot(sender.strategy.rtts, c=SENDER_COLORS[idx], label=sender.strategy.__class__.__name__)
+        plt.plot(*zip(*sender.strategy.rtt_recordings), c=SENDER_COLORS[idx], label=sender.strategy.__class__.__name__)
     plt.legend()
     plt.xlabel("Time")
     plt.ylabel("Current RTT")
@@ -96,7 +96,7 @@ def print_performance(senders: List[Sender], num_seconds: int):
 
     for idx, sender in enumerate(senders):
         if len(sender.strategy.slow_start_thresholds) > 0:
-            plt.plot(sender.strategy.slow_start_thresholds, c=SENDER_COLORS[idx], label=sender.strategy.__class__.__name__)
+            plt.plot(*zip(*sender.strategy.slow_start_thresholds), c=SENDER_COLORS[idx], label=sender.strategy.__class__.__name__)
 
     if any([len(sender.strategy.slow_start_thresholds) > 0 for sender in senders]):
         plt.legend()

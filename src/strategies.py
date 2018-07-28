@@ -13,10 +13,11 @@ class SenderStrategy(object):
         self.curr_duplicate_acks = 0
         self.rtts: List[float] = []
         self.cwnds: List[int] = []
+        self.rtt_recordings: List[Tuple] = []
         self.unacknowledged_packets: Dict = {}
         self.times_of_acknowledgements: List[Tuple[float, int]] = []
         self.ack_count = 0
-        self.slow_start_thresholds: List = []
+        self.slow_start_thresholds: List[Tuple] = []
         self.time_of_retransmit: Optional[float] = None
 
     def next_packet_to_send(self):
@@ -226,6 +227,7 @@ class CubicStrategy(SenderStrategy):
             if self.first_rtt is None:
                 self.first_rtt = rtt
             self.rtts.append(rtt)
+            self.rtt_recordings.append((time.time(), rtt))
             self.timeout = rtt * 1.2
 
             if self.congestion_avoidance_began_at is None and self.cwnd >= self.slow_start_threshold:
@@ -247,8 +249,8 @@ class CubicStrategy(SenderStrategy):
                     self.cwnd += a
                 else:
                     self.cwnd = w_est
-        self.cwnds.append(self.cwnd)
-        self.slow_start_thresholds.append(self.w_max)
+        self.cwnds.append((time.time(), self.cwnd))
+        self.slow_start_thresholds.append((time.time(), self.w_max))
 
 
 class TahoeStrategy(SenderStrategy):
@@ -370,6 +372,7 @@ class TahoeStrategy(SenderStrategy):
             self.sent_bytes = ack['ack_bytes']
             rtt = float(time.time() - ack['send_ts'])
             self.rtts.append(rtt)
+            self.rtt_recordings.append((time.time(), rtt))
             self.timeout = rtt * 1.2
             if self.cwnd < self.slow_start_thresh:
                 # In slow start
@@ -378,5 +381,5 @@ class TahoeStrategy(SenderStrategy):
                 # In congestion avoidance
                 self.cwnd += 1
 
-        self.cwnds.append(self.cwnd)
-        self.slow_start_thresholds.append(self.slow_start_thresh)
+        self.cwnds.append((time.time(), self.cwnd))
+        self.slow_start_thresholds.append((time.time(), self.slow_start_thresh))
