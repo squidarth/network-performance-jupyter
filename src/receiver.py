@@ -87,6 +87,7 @@ class Receiver(object):
         data = json.loads(serialized_data)
         return {
           'seq_num': data['seq_num'],
+          'cwnd': data['cwnd'],
           'send_ts': data['send_ts'],
           'ack_bytes': len(serialized_data)
         }
