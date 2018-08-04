@@ -106,13 +106,13 @@ def print_performance(senders: List[Sender], num_seconds: int):
 
         print("")
 
-def run_with_mahi_settings(mahimahi_settings: Dict, seconds_to_run: int, senders: List):
+def run_with_mahi_settings(mahimahi_settings: Dict, seconds_to_run: int, senders: List, should_print_performance: bool = True):
     mahimahi_cmd = generate_mahimahi_command(mahimahi_settings)
 
     sender_ports = " ".join(["$MAHIMAHI_BASE %s" % sender.port for sender in senders])
 
     cmd = "%s -- sh -c 'python3 %s %d %s' > out.out" % (mahimahi_cmd, RECEIVER_FILE, seconds_to_run, sender_ports)
-    receiver_process = Popen(cmd, shell=True)
+    Popen(cmd, shell=True)
     for sender in senders:
         sender.handshake()
     threads = [Thread(target=sender.run, args=[seconds_to_run]) for sender in senders]
@@ -124,5 +124,7 @@ def run_with_mahi_settings(mahimahi_settings: Dict, seconds_to_run: int, senders
     os.rename(QUEUE_LOG_FILE, QUEUE_LOG_TMP_FILE)
     #os.rename(DROP_LOG, DROP_LOG_TMP_FILE)
 
-    print_performance(senders, seconds_to_run)
-    receiver_process.kill()
+    if should_print_performance:
+        print_performance(senders, seconds_to_run)
+    Popen("pkill -9 mm-link", shell=True).wait()
+    Popen("pkill -9 run_receiver", shell=True).wait()
