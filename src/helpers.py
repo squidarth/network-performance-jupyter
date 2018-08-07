@@ -126,5 +126,5 @@ def run_with_mahi_settings(mahimahi_settings: Dict, seconds_to_run: int, senders
 
     if should_print_performance:
         print_performance(senders, seconds_to_run)
-    Popen("pkill -9 mm-link", shell=True).wait()
-    Popen("pkill -9 run_receiver", shell=True).wait()
+    Popen("pkill -f mm-link", shell=True).wait()
+    Popen("pkill -f run_receiver", shell=True).wait()

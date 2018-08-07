@@ -1,77 +1,19 @@
-from typing import List, Dict, Tuple, Optional
-from src.strategies import SenderStrategy
 import time
 import random
 import math
-from operator import itemgetter
 import json
 import torch
-import torch.nn as nn
-from collections import namedtuple
-import torch.nn.functional as F
-from torch.autograd import Variable
-import torchvision.transforms as T
-
-# Hyperparameters
-Actions = {
-    'INCREASE_QUADRATIC': 0,
-    'DECREASE_PERCENT': 1,
-    'INCREASE_ABSOLUTE': 2,
-    'DECREASE_ABSOLUTE': 3,
-    'STAY': 4,
-    'DECREASE_DRAMATIC': 5,
-    'UPDATE_WMAX': 6,
-    'RESET_CONGESTION_AVOIDANCE_TIME': 7
-}
-
-DRAMATIC_PERCENT_CHANGE = 0.5
-ABSOLUTE_CHANGE = 5
-PERCENT_CHANGE = 0.05
-
-Rewards = {
-    'DROPPED_PACKET': -400,
-    'RTT_IS_WAY_TOO_BIG': -1000,
-    'DRAMATIC_RTT_INCREASE': -400,
-    'INCREASED_RTT': -200,
-    'MINOR_RTT_INCREASE': -100,
-    'INCREASED_CWND_ABSOLUTE': 5,
-    'INCREASED_CWND_PERCENTAGE': 7,
-    'NO_REWARD': 0
-}
-
-#FEATURES = ['cwnd', 'dropped_packet', 'rtt']
-FEATURES = ['rtt']
-
-config = {
-    "n_layers": 1,
-    "hidden_dim": 15,
-    "rdropout": .5, 
-    "input_dim": len(FEATURES),
-    "output_dim": len(Actions),
-    "batch_size": 1,
-}
-
-
-RTT_CHANGE_THRESHOLD = 2
-RTT_DRAMATIC_CHANGE_THRESHOLD = 4
-
-RTT_AVERAGE_WINDOW = 10
-BATCH_SIZE = 30
-GAMMA = 0.992
-#STATE_WINDOW_SIZE = 15
-STATE_WINDOW_SIZE = 10
-EPS_START = 0.9
-EPS_END = 0.05
-EPS_DECAY = 20
+from operator import itemgetter
+from typing import List, Dict, Tuple, Optional
+from src.strategies import SenderStrategy
+from src.ml_helpers import optimize_model, Transition, LSTM_DQN
 
 DEFAULT_TIMEOUT = 2
-
-Transition = namedtuple('Transition',
-                        ('state', 'action', 'next_state', 'reward'))
-
+BETA_CUBIC = 0.7
+CUBIC_CONSTANT = 4 # This is c from the CUBIC algorithm
 
 class ReinforcementStrategy(SenderStrategy):
-    def __init__(self, policy_net, target_net, optimizer, config: Dict, episode_num: int, transitions: List[Dict]) -> None:
+    def __init__(self, policy_net, target_net, optimizer, hyperparameters: Dict, episode_num: int, transitions: List[Dict]) -> None:
         self.cwnd = 1
         self.fast_retransmit_packet = None
         self.time_since_retransmit = None
@@ -88,13 +30,13 @@ class ReinforcementStrategy(SenderStrategy):
         self.sequence_history_dict = {} # list with some fixed size
         self.transitions = transitions
         self.base_rtt = None
-        self.rtt_average = None
+        """ML initialization"""
         self.policy_net = policy_net
         self.target_net = target_net
         self.optimizer = optimizer
         self.episode = episode_num
         self.losses = []
-        self.config = config
+        self.hyperparameters = hyperparameters
         self.time_since_last_drop = time.time()
 
         # CUBIC variables
@@ -103,13 +45,13 @@ class ReinforcementStrategy(SenderStrategy):
 
     def select_next_action(self, state: torch.tensor):
         sample = random.random()
-        eps_threshold = EPS_END + (EPS_START - EPS_END) * \
-            math.exp(-1. * self.episode / EPS_DECAY)
+        eps_threshold = self.hyperparameters['EPS_END'] + (self.hyperparameters['EPS_START'] - self.hyperparameters['EPS_END']) * \
+            math.exp(-1. * self.episode / self.hyperparameters['EPS_DECAY'])
         if sample > eps_threshold:
             with torch.no_grad():
                 return self.policy_net(state.unsqueeze(0)).max(1)[1].view(1, 1)
         else:
-            return torch.tensor([[random.randrange(self.config['output_dim'])]], dtype=torch.long)
+            return torch.tensor([[random.randrange(len(self.hyperparameters['Actions']))]], dtype=torch.long)
 
 
     def window_is_open(self) -> bool:
@@ -152,25 +94,10 @@ class ReinforcementStrategy(SenderStrategy):
             # backoff for computing the timeouts
             for seq_num, segment in self.unacknowledged_packets.items():
                 if seq_num < self.seq_num and time.time() - segment['send_ts'] > self.timeout:
-                    
                     segment['send_ts'] = time.time()
                     segment['is_retransmit'] = True
-                    
                     # Update reinforcement learning based on previous window size increase
-                    self.time_since_last_drop = time.time()
-                    self.fast_retransmitted_packets_in_flight.append(seq_num)
-                    self.fast_retransmit_packet = segment
-                    self.sequence_history_dict[seq_num] = {
-                        'cwnd': segment['cwnd'],
-                        'rtt': 0,
-                        'dropped_packet': True
-                    }
-                    current_state = self.compute_state(max(seq_num - STATE_WINDOW_SIZE, 0), seq_num)
-                    current_state = self.state_to_tensor(current_state)
-
-                    current_action = self.select_next_action(current_state)
-                    self.take_action(current_action)
-                    self.update_q_function(seq_num, 0, True)
+                    self.handle_packet_loss(seq_num, segment)
                     return json.dumps(segment)
 
         if send_data is None:
@@ -178,8 +105,23 @@ class ReinforcementStrategy(SenderStrategy):
         else:
             return json.dumps(send_data)
 
+    def handle_packet_loss(self, seq_num: int, segment: Dict):
+        self.fast_retransmitted_packets_in_flight.append(seq_num)
+        self.fast_retransmit_packet = segment
+        self.sequence_history_dict[seq_num] = {
+            'cwnd': segment['cwnd'],
+            'rtt': 0,
+            'dropped_packet': True
+        }
+        current_state = self.compute_state(max(seq_num - self.hyperparameters['STATE_WINDOW_SIZE'], 0), seq_num)
+        current_state = self.state_to_tensor(current_state)
+
+        current_action = self.select_next_action(current_state)
+        self.take_action(current_action)
+        self.update_q_function(seq_num, 0, True)
+
     def compute_w_cubic(self, t: float) -> int:
-        k = (self.w_max * ((1 - 0.7)/4)) ** (1/3)
+        k = (self.w_max * ((1 - BETA_CUBIC)/CUBIC_CONSTANT)) ** (1/3)
         return 4 * (((t)-k) ** 3) + self.w_max
 
     def process_ack(self, serialized_ack: str) -> None:
@@ -201,27 +143,8 @@ class ReinforcementStrategy(SenderStrategy):
                 self.curr_duplicate_acks = 1
 
             if self.curr_duplicate_acks == 3 and (ack['seq_num'] + 1) not in self.fast_retransmitted_packets_in_flight:
-                # Received 3 duplicate acks, retransmit
-                self.fast_retransmitted_packets_in_flight.append(ack['seq_num'] + 1)
-                self.fast_retransmit_packet = self.unacknowledged_packets[ack['seq_num'] + 1]
-
-
-                self.sequence_history_dict[ack['seq_num']] = {
-                    'cwnd': ack['cwnd'],
-                    'rtt': 0,
-                    'dropped_packet': True
-                }
-
-                self.time_since_last_drop = time.time()
-                current_state = self.compute_state(max(ack['seq_num'] - STATE_WINDOW_SIZE, 0), ack['seq_num'])
-                current_state = self.state_to_tensor(current_state)
-
-                current_action = self.select_next_action(current_state)
-
-                self.take_action(current_action)
-                self.update_q_function(ack['seq_num'], 0, True)
-                # Update reinforcement learning based on previous window size increase
-                self.cwnd = 1
+                # Received 3 duplicate acks, count this as packet loss
+                self.handle_packet_loss(ack['seq_num'] + 1, self.unacknowledged_packets[ack['seq_num'] + 1])
         elif ack['seq_num'] >= self.next_ack:
             if self.fast_retransmit_packet is not None:
                 self.fast_retransmit_packet = None
@@ -248,11 +171,6 @@ class ReinforcementStrategy(SenderStrategy):
             if self.base_rtt is None:
                 self.base_rtt = rtt
 
-            if self.rtt_average is None:
-                self.rtt_average = rtt
-            else:
-                self.rtt_average = sum(self.rtts[-RTT_AVERAGE_WINDOW:])/len(self.rtts[-RTT_AVERAGE_WINDOW:])
-
             self.timeout = rtt * 1.2
             self.sequence_history_dict[ack['seq_num']] = {
                 'cwnd': ack['cwnd'],
@@ -260,98 +178,61 @@ class ReinforcementStrategy(SenderStrategy):
                 'dropped_packet': False,
                 'seq_num': ack['seq_num']
             }
-            current_state = self.compute_state(max(ack['seq_num'] - STATE_WINDOW_SIZE, 0), ack['seq_num'])
+            current_state = self.compute_state(max(ack['seq_num'] - self.hyperparameters['STATE_WINDOW_SIZE'], 0), ack['seq_num'])
             current_state = self.state_to_tensor(current_state)
 
             current_action = self.select_next_action(current_state)
             self.take_action(current_action)
-#             if self.cwnd < self.slow_start_thresh:
-#                 # In slow start
-#                 self.cwnd += 1
-#             elif (ack['seq_num'] + 1):
-#                 # In congestion avoidance
-#                 self.cwnd += 1.0/self.cwnd
+
             # TODO: Move to other function
             if len(self.unacknowledged_packets.keys()) == 0:
                 reward_packet = int(self.cwnd) + ack['seq_num']
-                #print("NO UNACKNOWLEDGED PACKETS")
             else:
                 reward_packet =  (int(self.cwnd) - len(self.unacknowledged_packets)) + max(self.unacknowledged_packets.keys())
 
-           # current_action = Actions['INCREASE_PERCENT']
             self.next_packet_rewards[reward_packet] = (
-                (max(ack['seq_num'] - STATE_WINDOW_SIZE, 0), ack['seq_num']),
-                self.rtt_average,
+                (max(ack['seq_num'] - self.hyperparameters['STATE_WINDOW_SIZE'], 0), ack['seq_num']),
                 torch.tensor([int(current_action)], dtype=torch.long)
             )
-#             print("reward packet %d" % reward_packet)
-#             print("getting ack for %d" % ack['seq_num'])
             self.update_q_function(ack['seq_num'], rtt)
 
         self.cwnds.append((time.time(), self.cwnd))
 
     def state_to_tensor(self, state: List) -> torch.Tensor:
-        current_state = [[ elem[feature] for feature in FEATURES ] for elem in state ]
-        pad = [ [0.0]*self.config["input_dim"] ]*(STATE_WINDOW_SIZE-len(current_state))
+        current_state = [[ elem[feature] for feature in self.hyperparameters['FEATURES'] ] for elem in state ]
+        pad = [[0.0] * len(self.hyperparameters['FEATURES']) ] * (self.hyperparameters['STATE_WINDOW_SIZE'] - len(current_state))
         current_state = pad + current_state
         return torch.Tensor(current_state)
 
     def take_action(self, action: int):
-        if action == Actions['INCREASE_QUADRATIC']:
+        if action == self.hyperparameters['Actions']['INCREASE_QUADRATIC']:
             self.cwnd = self.compute_w_cubic(time.time() - self.time_since_last_drop)
-        elif action == Actions['INCREASE_ABSOLUTE']:
-            self.cwnd = self.cwnd + ABSOLUTE_CHANGE/self.cwnd
-        elif action == Actions['DECREASE_PERCENT']:
-            self.cwnd = max(self.cwnd * (1 - PERCENT_CHANGE), 1)
-        elif action == Actions['DECREASE_ABSOLUTE']:
-            self.cwnd = max(self.cwnd - ABSOLUTE_CHANGE, 1)
-        elif action == Actions['DECREASE_DRAMATIC']:
-            self.cwnd = max(self.cwnd * (1 - DRAMATIC_PERCENT_CHANGE), 1)
-        elif action == Actions['STAY']:
+        elif action == self.hyperparameters['Actions']['INCREASE_ABSOLUTE']:
+            self.cwnd = self.cwnd + self.hyperparameters['ABSOLUTE_CHANGE']/self.cwnd
+        elif action == self.hyperparameters['Actions']['DECREASE_PERCENT']:
+            self.cwnd = max(self.cwnd * (1 - self.hyperparameters['PERCENT_CHANGE']), 1)
+        elif action == self.hyperparameters['Actions']['DECREASE_ABSOLUTE']:
+            self.cwnd = max(self.cwnd - self.hyperparameters['ABSOLUTE_CHANGE'], 1)
+        elif action == self.hyperparameters['Actions']['DECREASE_DRAMATIC']:
+            self.cwnd = max(self.cwnd * (1 - self.hyperparameters['DRAMATIC_PERCENT_CHANGE']), 1)
+        elif action == self.hyperparameters['Actions']['STAY']:
             self.cwnd = self.cwnd
-        elif action == Actions['UPDATE_WMAX']:
+        elif action == self.hyperparameters['Actions']['UPDATE_WMAX']:
             self.w_max = self.cwnd
-        elif action == Actions['RESET_CONGESTION_AVOIDANCE_TIME']:
+        elif action == self.hyperparameters['Actions']['RESET_CONGESTION_AVOIDANCE_TIME']:
             self.time_since_last_drop = time.time()
-
-    def optimize_model(self):
-        if (len(self.transitions)  < BATCH_SIZE):
-            return
-
-
-        transitions = random.sample(self.transitions, BATCH_SIZE)
-        batch = Transition(*zip(*transitions))
-        state_batch = torch.cat(batch.state)
-        action_batch = torch.cat(batch.action)
-        reward_batch = torch.cat(batch.reward)
-
-        predicted_actions = self.policy_net(state_batch)
-
-        state_action_values = predicted_actions.gather(1, action_batch.unsqueeze(-1))
-
-        next_state_values = self.target_net(state_batch).max(1)[0].detach()
-        expected_state_action_values = (next_state_values * GAMMA) + reward_batch
-        loss = F.smooth_l1_loss(state_action_values, expected_state_action_values.unsqueeze(1))
-
-        self.optimizer.zero_grad()
-        loss.backward()
-        self.losses.append(loss.data.item())
-
-        for param in self.policy_net.parameters():
-            param.grad.data.clamp_(-1, 1)
-        self.optimizer.step()
 
     def update_q_function(self, seq_num: int, rtt: float = None, dropped_packet: bool = False):
         # Update Q Function
 
         if self.next_packet_rewards.get(seq_num):
             """In this function, we can now construct state, reward & next state, and add to the Q function"""
-            sequence_range, previous_average_rtt, action = self.next_packet_rewards.get(seq_num)
+            sequence_range, action = self.next_packet_rewards.get(seq_num)
 
             state = self.compute_state(*sequence_range)
-            next_state = self.compute_state(max(seq_num - STATE_WINDOW_SIZE, 0), seq_num)
+            next_state = self.compute_state(max(seq_num - self.hyperparameters['STATE_WINDOW_SIZE'], 0), seq_num)
 
-            reward = self.compute_reward(rtt, previous_average_rtt, action, dropped_packet)
+            reward = self.compute_reward(rtt, action, dropped_packet)
 
             self.transitions.append(
                 Transition(
@@ -361,29 +242,37 @@ class ReinforcementStrategy(SenderStrategy):
                     torch.Tensor([reward])
                 )
             )
-            self.optimize_model()
+            loss = optimize_model(
+                policy_net=self.policy_net,
+                target_net=self.target_net,
+                optimizer=self.optimizer,
+                transitions=self.transitions,
+                batch_size=self.hyperparameters['BATCH_SIZE'],
+                reward_decay=self.hyperparameters['REWARD_DECAY']
+            )
+            self.losses.append(loss)
 
             del self.next_packet_rewards[seq_num]
 
     def compute_state(self, begin: int, end: int) -> List[Dict]:
         return list(list(zip(*sorted([(seq_num, state)
             for seq_num, state in self.sequence_history_dict.items()
-            if seq_num >= begin and seq_num <= end], key=itemgetter(0))[-STATE_WINDOW_SIZE:]))[1])
+            if seq_num >= begin and seq_num <= end], key=itemgetter(0))[-self.hyperparameters['STATE_WINDOW_SIZE']:]))[1])
 
-    def compute_reward(self, rtt: float, previous_average_rtt: float, action: int, dropped_packet: bool):
+    def compute_reward(self, rtt: float, action: int, dropped_packet: bool):
         if dropped_packet:
-            return Rewards['DROPPED_PACKET']
+            return self.hyperparameters['Rewards']['DROPPED_PACKET']
         elif rtt > (self.base_rtt * 10):
-            return Rewards['RTT_IS_WAY_TOO_BIG']
-        elif rtt > (self.base_rtt * RTT_DRAMATIC_CHANGE_THRESHOLD):
-            return Rewards['DRAMATIC_RTT_INCREASE']
-        elif rtt > (self.base_rtt * RTT_CHANGE_THRESHOLD):
-            return Rewards['INCREASED_RTT']
+            return self.hyperparameters['Rewards']['RTT_IS_WAY_TOO_BIG']
+        elif rtt > (self.base_rtt * self.hyperparameters['RTT_DRAMATIC_CHANGE_THRESHOLD']):
+            return self.hyperparameters['Rewards']['DRAMATIC_RTT_INCREASE']
+        elif rtt > (self.base_rtt * self.hyperparameters['RTT_CHANGE_THRESHOLD']):
+            return self.hyperparameters['Rewards']['INCREASED_RTT']
         elif rtt > (self.base_rtt * 1.4):
-            return Rewards['MINOR_RTT_INCREASE']
-        elif action == Actions['INCREASE_QUADRATIC']:
-            return Rewards['INCREASED_CWND_PERCENTAGE']
-        elif action == Actions['INCREASE_ABSOLUTE']:
-            return Rewards['INCREASED_CWND_ABSOLUTE']
+            return self.hyperparameters['Rewards']['MINOR_RTT_INCREASE']
+        elif action == self.hyperparameters['Actions']['INCREASE_QUADRATIC']:
+            return self.hyperparameters['Rewards']['INCREASED_CWND_PERCENTAGE']
+        elif action == self.hyperparameters['Actions']['INCREASE_ABSOLUTE']:
+            return self.hyperparameters['Rewards']['INCREASED_CWND_ABSOLUTE']
         else:
-            return Rewards['NO_REWARD']
+            return self.hyperparameters['Rewards']['NO_REWARD']
