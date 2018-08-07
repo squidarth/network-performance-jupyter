@@ -6,6 +6,7 @@ import socket
 from threading import Thread
 from typing import Dict, List
 from src.senders import Sender
+from os.path import join
 
 RECEIVER_FILE = "run_receiver.py"
 AVERAGE_SEGMENT_SIZE = 80
@@ -60,12 +61,28 @@ def get_open_udp_port():
 
 SENDER_COLORS = ["blue", "red", "green", "cyan", "magenta", "yellow", "black"]
 
-def print_performance(senders: List[Sender], num_seconds: int):
-    for sender in senders:
-        print("Results for sender %d, with strategy: %s" % (sender.port, sender.strategy.__class__.__name__))
-        print("**Throughput:**                           %f bytes/s" % (AVERAGE_SEGMENT_SIZE * (sender.strategy.ack_count/num_seconds)))
-        print("**Average RTT:**                          %f ms" % ((float(sum(sender.strategy.rtts))/len(sender.strategy.rtts)) * 1000))
-        print("")
+def print_performance(
+        senders: List[Sender],
+        num_seconds: int, 
+        episode_num : int,
+        write_to_disk : bool ,
+        output_dir : str,
+        experiment_prefix : str        
+        ):
+
+    if write_to_disk:
+        with open(join(output_dir, experiment_prefix,  "episode_" + str(episode_num) + "_stats.txt" ), 'w') as out_stats:
+            for sender in senders:
+                out_stats.write("Results for sender %d, with strategy: %s" % (sender.port, sender.strategy.__class__.__name__) + "\n")
+                out_stats.write("**Throughput:**                           %f bytes/s" % (AVERAGE_SEGMENT_SIZE * (sender.strategy.ack_count/num_seconds)) + "\n")
+                out_stats.write("**Average RTT:**                          %f ms" % ((float(sum(sender.strategy.rtts))/len(sender.strategy.rtts)) * 1000) + "\n")
+                out_stats.write("\n")
+    else:
+        for sender in senders:
+            print("Results for sender %d, with strategy: %s" % (sender.port, sender.strategy.__class__.__name__))
+            print("**Throughput:**                           %f bytes/s" % (AVERAGE_SEGMENT_SIZE * (sender.strategy.ack_count/num_seconds)))
+            print("**Average RTT:**                          %f ms" % ((float(sum(sender.strategy.rtts))/len(sender.strategy.rtts)) * 1000))
+            print("")
 
 
     # Compute the queue log stuff
@@ -76,7 +93,12 @@ def print_performance(senders: List[Sender], num_seconds: int):
 
     plt.xlabel("Time")
     plt.ylabel("Link Queue Size")
-    plt.show()
+
+    if write_to_disk:
+        plt.savefig(join(output_dir, experiment_prefix, "episode_" + str(episode_num) + "_link-queue-size.png" ))
+        plt.close()
+    else:
+        plt.show()
 
     handles = []
     for idx, sender in enumerate(senders):
@@ -84,29 +106,35 @@ def print_performance(senders: List[Sender], num_seconds: int):
     plt.legend()
     plt.xlabel("Time")
     plt.ylabel("Congestion Window Size")
-    plt.show()
-    print("")
+
+    if write_to_disk:
+        plt.savefig(join(output_dir, experiment_prefix, "episode_" + str(episode_num) + "_cwnd.png" ))
+        plt.close()
+    else:
+        plt.show()
+        print("")
 
     for idx, sender in enumerate(senders):
         plt.plot(*zip(*sender.strategy.rtt_recordings), c=SENDER_COLORS[idx], label=sender.strategy.__class__.__name__)
     plt.legend()
     plt.xlabel("Time")
     plt.ylabel("Current RTT")
-    plt.show()
-
-    for idx, sender in enumerate(senders):
-        if len(sender.strategy.slow_start_thresholds) > 0:
-            plt.plot(*zip(*sender.strategy.slow_start_thresholds), c=SENDER_COLORS[idx], label=sender.strategy.__class__.__name__)
-
-    if any([len(sender.strategy.slow_start_thresholds) > 0 for sender in senders]):
-        plt.legend()
-        plt.xlabel("Time")
-        plt.ylabel("Slow start threshold")
+    if write_to_disk:
+        plt.savefig(join(output_dir, experiment_prefix, "episode_" + str(episode_num) +"_rtt.png" ))
+        plt.close()
+    else:
         plt.show()
 
-        print("")
-
-def run_with_mahi_settings(mahimahi_settings: Dict, seconds_to_run: int, senders: List, should_print_performance: bool = True):
+def run_with_mahi_settings(
+        mahimahi_settings: Dict, 
+        seconds_to_run: int, 
+        senders: List, 
+        should_print_performance: bool , 
+        episode_num : int,
+        write_to_disk : bool ,
+        output_dir : str,
+        experiment_prefix : str
+        ):
     mahimahi_cmd = generate_mahimahi_command(mahimahi_settings)
 
     sender_ports = " ".join(["$MAHIMAHI_BASE %s" % sender.port for sender in senders])
@@ -125,6 +153,6 @@ def run_with_mahi_settings(mahimahi_settings: Dict, seconds_to_run: int, senders
     #os.rename(DROP_LOG, DROP_LOG_TMP_FILE)
 
     if should_print_performance:
-        print_performance(senders, seconds_to_run)
+        print_performance(senders, seconds_to_run, episode_num, write_to_disk, output_dir, experiment_prefix)
     Popen("pkill -f mm-link", shell=True).wait()
     Popen("pkill -f run_receiver", shell=True).wait()

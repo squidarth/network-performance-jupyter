@@ -46,10 +46,15 @@ class LSTM_DQN(nn.Module):
     def __init__(self, config):
         super(LSTM_DQN,self).__init__()
 
-        self.W = nn.LSTM(config["input_dim"], config["hidden_dim"],batch_first=True)
-        self.h0, self.c0 = (torch.zeros(1, 1, config["hidden_dim"]),
-                torch.zeros(1, 1, config["hidden_dim"]))
-        self.U = nn.Linear(config["hidden_dim"],config["output_dim"])
+        self.W = nn.LSTM(config["input_dim"], config["hidden_dim"],batch_first=True,bidirectional=config["bidirectional"], num_layers=config["num_layers"])
+        if config["bidirectional"]:
+            self.h0, self.c0 = (torch.zeros(2 * config["num_layers"], 1, config["hidden_dim"]),
+                    torch.zeros(2 * config["num_layers"], 1, config["hidden_dim"]))
+            self.U = nn.Linear(config["hidden_dim"] * 2,config["output_dim"])
+        else:
+            self.h0, self.c0 = (torch.zeros(config["num_layers"], 1, config["hidden_dim"]),
+                    torch.zeros(config["num_layers"], 1, config["hidden_dim"]))
+            self.U = nn.Linear(config["hidden_dim"],config["output_dim"])
 
         for param in self.W.parameters():
             if len(param.size()) > 1:
@@ -58,6 +63,8 @@ class LSTM_DQN(nn.Module):
         for param in self.U.parameters():
             if len(param.size()) > 1:
                 nn.init.orthogonal(param)
+        
+        self.config = config
 
     def forward(self, x):
         # apply LSTM
