@@ -1,3 +1,4 @@
+import matplotlib
 import matplotlib.pyplot as plt
 import re
 import os
@@ -7,6 +8,7 @@ from threading import Thread
 from typing import Dict, List
 from src.senders import Sender
 from os.path import join
+
 
 RECEIVER_FILE = "run_receiver.py"
 AVERAGE_SEGMENT_SIZE = 80
@@ -63,15 +65,15 @@ SENDER_COLORS = ["blue", "red", "green", "cyan", "magenta", "yellow", "black"]
 
 def print_performance(
         senders: List[Sender],
-        num_seconds: int, 
+        num_seconds: int,
         episode_num : int,
         write_to_disk : bool ,
         output_dir : str,
-        experiment_prefix : str        
+        experiment_dir : str
         ):
 
     if write_to_disk:
-        with open(join(output_dir, experiment_prefix,  "episode_" + str(episode_num) + "_stats.txt" ), 'w') as out_stats:
+        with open(join(experiment_dir,  "episode_" + str(episode_num) + "_stats.txt" ), 'w') as out_stats:
             for sender in senders:
                 out_stats.write("Results for sender %d, with strategy: %s" % (sender.port, sender.strategy.__class__.__name__) + "\n")
                 out_stats.write("**Throughput:**                           %f bytes/s" % (AVERAGE_SEGMENT_SIZE * (sender.strategy.ack_count/num_seconds)) + "\n")
@@ -95,7 +97,7 @@ def print_performance(
     plt.ylabel("Link Queue Size")
 
     if write_to_disk:
-        plt.savefig(join(output_dir, experiment_prefix, "episode_" + str(episode_num) + "_link-queue-size.png" ))
+        plt.savefig(join(experiment_dir, "episode_" + str(episode_num) + "_link-queue-size.png" ))
         plt.close()
     else:
         plt.show()
@@ -108,7 +110,7 @@ def print_performance(
     plt.ylabel("Congestion Window Size")
 
     if write_to_disk:
-        plt.savefig(join(output_dir, experiment_prefix, "episode_" + str(episode_num) + "_cwnd.png" ))
+        plt.savefig(join(experiment_dir, "episode_" + str(episode_num) + "_cwnd.png" ))
         plt.close()
     else:
         plt.show()
@@ -120,7 +122,7 @@ def print_performance(
     plt.xlabel("Time")
     plt.ylabel("Current RTT")
     if write_to_disk:
-        plt.savefig(join(output_dir, experiment_prefix, "episode_" + str(episode_num) +"_rtt.png" ))
+        plt.savefig(join(experiment_dir, "episode_" + str(episode_num) +"_rtt.png" ))
         plt.close()
     else:
         plt.show()
@@ -133,7 +135,7 @@ def run_with_mahi_settings(
         episode_num : int,
         write_to_disk : bool ,
         output_dir : str,
-        experiment_prefix : str
+        experiment_dir : str
         ):
     mahimahi_cmd = generate_mahimahi_command(mahimahi_settings)
 
@@ -153,6 +155,6 @@ def run_with_mahi_settings(
     #os.rename(DROP_LOG, DROP_LOG_TMP_FILE)
 
     if should_print_performance:
-        print_performance(senders, seconds_to_run, episode_num, write_to_disk, output_dir, experiment_prefix)
+        print_performance(senders, seconds_to_run, episode_num, write_to_disk, output_dir, experiment_dir)
     Popen("pkill -f mm-link", shell=True).wait()
     Popen("pkill -f run_receiver", shell=True).wait()

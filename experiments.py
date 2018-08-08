@@ -4,6 +4,9 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 import matplotlib
+# Use this if you are writing to disk rather than
+# using ipython.
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from src.helpers import run_with_mahi_settings, get_open_udp_port
 from src.senders import Sender
@@ -30,7 +33,7 @@ mahimahi_settings = {
 
 def run_experiment(hyperparameters_file_name, experiment_name):
     experiment_dir = join(OUTPUT_DIRECTORY, EXPERIMENT_PREFIX + experiment_name)
-
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if not exists(OUTPUT_DIRECTORY):
         mkdir(OUTPUT_DIRECTORY)
 
@@ -44,9 +47,8 @@ def run_experiment(hyperparameters_file_name, experiment_name):
     NUM_EPISODES = hyperparameters['HYPERPARAMETERS']['NUM_EPISODES']
     TARGET_UPDATE = hyperparameters['HYPERPARAMETERS']['TARGET_UPDATE']
 
-    policy_net = LSTM_DQN(hyperparameters['lstm_config'])
-
-    target_net = LSTM_DQN(hyperparameters['lstm_config'])
+    policy_net = LSTM_DQN(hyperparameters['lstm_config']).to(device)
+    target_net = LSTM_DQN(hyperparameters['lstm_config']).to(device)
     target_net.load_state_dict(policy_net.state_dict())
     optimizer = optim.RMSprop(policy_net.parameters())
     transitions = []
@@ -56,6 +58,7 @@ def run_experiment(hyperparameters_file_name, experiment_name):
         strategy = ReinforcementStrategy(
             policy_net=policy_net,
             target_net=target_net,
+            device=device,
             optimizer=optimizer,
             hyperparameters=hyperparameters['HYPERPARAMETERS'],
             episode_num=i,
@@ -64,13 +67,13 @@ def run_experiment(hyperparameters_file_name, experiment_name):
         print("***Episode # %d***" % i)
         run_with_mahi_settings(
             mahimahi_settings,
-            10,
+            60,
             [Sender(port, strategy)],
-            i % 1 == 0,
+            i % 20 == 0,
             i,
             write_to_disk=True,
             output_dir=OUTPUT_DIRECTORY,
-            experiment_prefix=experiment_dir
+            experiment_dir=experiment_dir
         )
         total_losses.append(strategy.losses)
         if i % TARGET_UPDATE == 0:
@@ -85,7 +88,7 @@ def run_experiment(hyperparameters_file_name, experiment_name):
         x = list(range(start, start + len(loss_array)))
         plt.plot(x, loss_array, c=colors[i % 5])
         start += len(loss_array)
-    plt.savefig(join(output_dir, experiment_prefix, "loss.png" ))
+    plt.savefig(join(experiment_dir, "loss.png" ))
     plt.close()
 
 

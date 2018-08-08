@@ -13,7 +13,8 @@ BETA_CUBIC = 0.7
 CUBIC_CONSTANT = 4 # This is c from the CUBIC algorithm
 
 class ReinforcementStrategy(SenderStrategy):
-    def __init__(self, policy_net, target_net, optimizer, hyperparameters: Dict, episode_num: int, transitions: List[Dict]) -> None:
+    def __init__(self, policy_net: LSTM_DQN, target_net: LSTM_DQN, device: str, optimizer, hyperparameters: Dict, episode_num: int, transitions: List[Dict]) -> None:
+        self.device = device
         self.cwnd = 1
         self.fast_retransmit_packet = None
         self.time_since_retransmit = None
@@ -51,7 +52,7 @@ class ReinforcementStrategy(SenderStrategy):
             with torch.no_grad():
                 return self.policy_net(state.unsqueeze(0)).max(1)[1].view(1, 1)
         else:
-            return torch.tensor([[random.randrange(len(self.hyperparameters['Actions']))]], dtype=torch.long)
+            return torch.tensor([[random.randrange(len(self.hyperparameters['Actions']))]], device=self.device, dtype=torch.long)
 
 
     def window_is_open(self) -> bool:
@@ -236,15 +237,16 @@ class ReinforcementStrategy(SenderStrategy):
 
             self.transitions.append(
                 Transition(
-                    self.state_to_tensor(state).unsqueeze(0),
+                    self.state_to_tensor(state).unsqueeze(0).to(self.device),
                     action,
-                    self.state_to_tensor(next_state).unsqueeze(0),
-                    torch.Tensor([reward])
+                    self.state_to_tensor(next_state).unsqueeze(0).to(self.device),
+                    torch.tensor([reward], device=self.device, dtype=torch.float)
                 )
             )
             loss = optimize_model(
                 policy_net=self.policy_net,
                 target_net=self.target_net,
+                device=self.device,
                 optimizer=self.optimizer,
                 transitions=self.transitions,
                 batch_size=self.hyperparameters['BATCH_SIZE'],

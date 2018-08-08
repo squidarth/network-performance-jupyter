@@ -10,6 +10,7 @@ Transition = namedtuple('Transition',
 def optimize_model(
         policy_net,
         target_net,
+        device,
         optimizer,
         transitions,
         batch_size,
@@ -63,7 +64,7 @@ class LSTM_DQN(nn.Module):
         for param in self.U.parameters():
             if len(param.size()) > 1:
                 nn.init.orthogonal(param)
-        
+
         self.config = config
 
     def forward(self, x):
