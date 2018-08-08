@@ -193,7 +193,7 @@ class ReinforcementStrategy(SenderStrategy):
 
             self.next_packet_rewards[reward_packet] = (
                 (max(ack['seq_num'] - self.hyperparameters['STATE_WINDOW_SIZE'], 0), ack['seq_num']),
-                torch.tensor([int(current_action)], dtype=torch.long)
+                torch.tensor([int(current_action)], device=self.device, dtype=torch.long)
             )
             self.update_q_function(ack['seq_num'], rtt)
 
