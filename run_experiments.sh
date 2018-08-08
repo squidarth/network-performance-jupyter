@@ -1,6 +1,6 @@
 #!/bin/bash
-echo "Starting experiment 1"
-python3 experiments.py --hyperparameters-file hyperparameters_1.json --experiment-name 1
+#echo "Starting experiment 1"
+#python3 experiments.py --hyperparameters-file hyperparameters_1.json --experiment-name 1
 echo "Starting experiment 2"
 python3 experiments.py --hyperparameters-file hyperparameters_2.json --experiment-name 2
 echo "Starting experiment 3"
