@@ -49,12 +49,12 @@ def run_experiment(hyperparameters_file_name, experiment_name):
  
     # policy_net = LSTM_DQN(hyperparameters['lstm_config'], device, use_cuda=torch.cuda.is_available() )
     # target_net = LSTM_DQN(hyperparameters['lstm_config'], device, use_cuda=torch.cuda.is_available() )
-    policy_net = LSTM_DQN(hyperparameters['lstm_config'], device)
-    target_net = LSTM_DQN(hyperparameters['lstm_config'], device)
+    policy_net = LSTM_DQN(hyperparameters['lstm_config'], device).to(device=device)
+    target_net = LSTM_DQN(hyperparameters['lstm_config'], device).to(device=device)
 
-    if torch.cuda.is_available():
-        policy_net.cuda()
-        target_net.cuda()
+    # if torch.cuda.is_available():
+    #     policy_net.cuda()
+    #     target_net.cuda()
 
     target_net.load_state_dict(policy_net.state_dict())
     optimizer = optim.RMSprop(policy_net.parameters())
