@@ -2,6 +2,7 @@ import random
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 from collections import namedtuple
 
 Transition = namedtuple('Transition',
@@ -44,7 +45,7 @@ def optimize_model(
 
 class LSTM_DQN(nn.Module):
     """This the model we'll be using our Q Function"""
-    def __init__(self, config):
+    def __init__(self, config, use_cuda=False):
         super(LSTM_DQN,self).__init__()
 
         self.W = nn.LSTM(config["input_dim"], config["hidden_dim"],batch_first=True,bidirectional=config["bidirectional"], num_layers=config["num_layers"])
@@ -56,6 +57,10 @@ class LSTM_DQN(nn.Module):
             self.h0, self.c0 = (torch.zeros(config["num_layers"], 1, config["hidden_dim"]),
                     torch.zeros(config["num_layers"], 1, config["hidden_dim"]))
             self.U = nn.Linear(config["hidden_dim"],config["output_dim"])
+        
+        if use_cuda:
+            self.h0.cuda()
+            self.c0.cuda()
 
         for param in self.W.parameters():
             if len(param.size()) > 1:
