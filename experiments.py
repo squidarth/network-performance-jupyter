@@ -46,7 +46,7 @@ def run_experiment(hyperparameters_file_name, experiment_name):
 
     NUM_EPISODES = hyperparameters['HYPERPARAMETERS']['NUM_EPISODES']
     TARGET_UPDATE = hyperparameters['HYPERPARAMETERS']['TARGET_UPDATE']
- 
+
     # policy_net = LSTM_DQN(hyperparameters['lstm_config'], device, use_cuda=torch.cuda.is_available() )
     # target_net = LSTM_DQN(hyperparameters['lstm_config'], device, use_cuda=torch.cuda.is_available() )
     policy_net = LSTM_DQN(hyperparameters['lstm_config'], device).to(device=device)
@@ -76,7 +76,7 @@ def run_experiment(hyperparameters_file_name, experiment_name):
             mahimahi_settings,
             60,
             [Sender(port, strategy)],
-            i % 20 == 0,
+            True,       # always log rtt, cwnd, stats, and queue usage
             i,
             write_to_disk=True,
             output_dir=OUTPUT_DIRECTORY,
@@ -85,6 +85,9 @@ def run_experiment(hyperparameters_file_name, experiment_name):
         total_losses.append(strategy.losses)
         if i % TARGET_UPDATE == 0:
             target_net.load_state_dict(policy_net.state_dict())
+            # model persistence here
+            policy_net_filename = join( experiment_dir, "policy-net_episode-" + str(i) + ".model" )
+            torch.save(policy_net.state_dict(), policy_net_filename)
 
     # Print out the loss, using colors to distinguish between
     # episodes.
