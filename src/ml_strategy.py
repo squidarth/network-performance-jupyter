@@ -50,7 +50,7 @@ class ReinforcementStrategy(SenderStrategy):
             math.exp(-1. * self.episode / self.hyperparameters['EPS_DECAY'])
         if sample > eps_threshold:
             with torch.no_grad():
-                return self.policy_net(state.unsqueeze(0)).max(1)[1].view(1, 1)
+                return self.policy_net(state.unsqueeze(0)).max(1)[1].view(1, 1).to(self.device)
         else:
             return torch.tensor([[random.randrange(len(self.hyperparameters['Actions']))]], device=self.device, dtype=torch.long)
 
