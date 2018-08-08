@@ -47,8 +47,8 @@ def run_experiment(hyperparameters_file_name, experiment_name):
     NUM_EPISODES = hyperparameters['HYPERPARAMETERS']['NUM_EPISODES']
     TARGET_UPDATE = hyperparameters['HYPERPARAMETERS']['TARGET_UPDATE']
  
-    policy_net = LSTM_DQN(hyperparameters['lstm_config'], use_cuda=torch.cuda.is_available() )
-    target_net = LSTM_DQN(hyperparameters['lstm_config'], use_cuda=torch.cuda.is_available() )
+    policy_net = LSTM_DQN(hyperparameters['lstm_config'], device, use_cuda=torch.cuda.is_available() )
+    target_net = LSTM_DQN(hyperparameters['lstm_config'], device, use_cuda=torch.cuda.is_available() )
 
     if torch.cuda.is_available():
         policy_net.cuda()
