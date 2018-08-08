@@ -13,7 +13,7 @@ BETA_CUBIC = 0.7
 CUBIC_CONSTANT = 4 # This is c from the CUBIC algorithm
 
 class ReinforcementStrategy(SenderStrategy):
-    def __init__(self, policy_net: LSTM_DQN, target_net: LSTM_DQN, device: str, optimizer, hyperparameters: Dict, episode_num: int, transitions: List[Dict]) -> None:
+    def __init__(self, policy_net: LSTM_DQN, target_net: LSTM_DQN, device: torch.device, optimizer, hyperparameters: Dict, episode_num: int, transitions: List[Dict]) -> None:
         self.device = device
         self.cwnd = 1
         self.fast_retransmit_packet = None
