@@ -45,30 +45,31 @@ def optimize_model(
 
 class LSTM_DQN(nn.Module):
     """This the model we'll be using our Q Function"""
-    def __init__(self, config, use_cuda=False):
+    def __init__(self, config, device, use_cuda=False):
         super(LSTM_DQN,self).__init__()
 
+        self.device = device
         self.W = nn.LSTM(config["input_dim"], config["hidden_dim"],batch_first=True,bidirectional=config["bidirectional"], num_layers=config["num_layers"])
         if config["bidirectional"]:
-            self.h0, self.c0 = (torch.zeros(2 * config["num_layers"], 1, config["hidden_dim"]),
-                    torch.zeros(2 * config["num_layers"], 1, config["hidden_dim"]))
+            self.h0, self.c0 = (torch.zeros(2 * config["num_layers"], 1, config["hidden_dim"], device=device),
+                    torch.zeros(2 * config["num_layers"], 1, config["hidden_dim"], device=device))
             self.U = nn.Linear(config["hidden_dim"] * 2,config["output_dim"])
         else:
-            self.h0, self.c0 = (torch.zeros(config["num_layers"], 1, config["hidden_dim"]),
-                    torch.zeros(config["num_layers"], 1, config["hidden_dim"]))
+            self.h0, self.c0 = (torch.zeros(config["num_layers"], 1, config["hidden_dim"], device=device),
+                    torch.zeros(config["num_layers"], 1, config["hidden_dim"], device=device))
             self.U = nn.Linear(config["hidden_dim"],config["output_dim"])
         
-        if use_cuda:
-            self.h0.cuda()
-            self.c0.cuda()
+        # if use_cuda:
+        #     self.h0.cuda()
+        #     self.c0.cuda()
 
         for param in self.W.parameters():
             if len(param.size()) > 1:
-                nn.init.orthogonal(param)
+                nn.init.orthogonal_(param)
 
         for param in self.U.parameters():
             if len(param.size()) > 1:
-                nn.init.orthogonal(param)
+                nn.init.orthogonal_(param)
 
         self.config = config
 
@@ -76,8 +77,8 @@ class LSTM_DQN(nn.Module):
         # apply LSTM
         batch_len, _, _ = x.size()
 
-        h0 = self.h0.repeat(1, batch_len, 1)
-        c0 = self.c0.repeat(1, batch_len, 1)
+        h0 = self.h0.repeat(1, batch_len, 1).to(device=self.device)
+        c0 = self.c0.repeat(1, batch_len, 1).to(device=self.device)
 
         out, _ = self.W(x, (h0,c0))
 
