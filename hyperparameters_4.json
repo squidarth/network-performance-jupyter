@@ -1,4 +1,5 @@
 {
+    "_comment": "Update state window, also increase num_layers, add bidirectionality",
     "HYPERPARAMETERS": {
         "Actions": {
             "INCREASE_QUADRATIC": 0,
