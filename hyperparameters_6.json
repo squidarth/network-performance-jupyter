@@ -33,7 +33,7 @@
         "EPS_START": 0.9,
         "EPS_END": 0.05,
         "EPS_DECAY": 100,
-        "NUM_EPISODES": 150,
+        "NUM_EPISODES": 300,
         "TARGET_UPDATE": 15
     },
     "lstm_config": {
