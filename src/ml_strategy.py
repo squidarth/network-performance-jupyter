@@ -203,7 +203,7 @@ class ReinforcementStrategy(SenderStrategy):
         current_state = [[ elem[feature] for feature in self.hyperparameters['FEATURES'] ] for elem in state ]
         pad = [[0.0] * len(self.hyperparameters['FEATURES']) ] * (self.hyperparameters['STATE_WINDOW_SIZE'] - len(current_state))
         current_state = pad + current_state
-        return torch.Tensor(current_state)
+        return torch.tensor(current_state, device=self.device)
 
     def take_action(self, action: int):
         if action == self.hyperparameters['Actions']['INCREASE_QUADRATIC']:
@@ -237,9 +237,9 @@ class ReinforcementStrategy(SenderStrategy):
 
             self.transitions.append(
                 Transition(
-                    self.state_to_tensor(state).unsqueeze(0).to(self.device),
+                    self.state_to_tensor(state).unsqueeze(0),
                     action,
-                    self.state_to_tensor(next_state).unsqueeze(0).to(self.device),
+                    self.state_to_tensor(next_state).unsqueeze(0),
                     torch.tensor([reward], device=self.device, dtype=torch.float)
                 )
             )
